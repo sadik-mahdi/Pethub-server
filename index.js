@@ -1,17 +1,22 @@
 
 const express = require('express');
 const dotenv = require('dotenv');
-const cors = require('cors')
+const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 dotenv.config();
 
+const uri =  process.env.MONGODB_URI;
+
 const app = express()
-const port = 5000
+const PORT = process.env.PORT
 
-app.use(cors())
+app.use(
+  cors({
+    origin: "http://localhost:3000",
+    credentials: true,
+  })
+);
 app.use(express.json())
-
-const uri = process.env.MONGODB_URI;
 
 const client = new MongoClient(uri, {
   serverApi: {
@@ -21,50 +26,45 @@ const client = new MongoClient(uri, {
   }
 });
 
-
 async function run() {
   try {
-    // await client.connect();
+    await client.connect();
 
     const db = client.db("pet-hub");
     const petCollection = db.collection("pets");
 
-    app.get("/pet", async(req, res) => {
-      const result  = await petCollection.find().toArray();
+    app.get('/pet', async(req, res)=>{
+      const result = await petCollection.find().toArray();
       res.json(result);
     })
 
-    app.post("/pet", async (req, res) => {
-      try {
-        const petData = req.body;
-        const result = await petCollection.insertOne(petData);
-
-        res.json(result);
-      } catch (err) {
-        console.error(err);
-        res.status(500).send("Insert failed");
-      }
-    });
-
-
-    app.get("/pet/:id", async(req, res)=> {
-      const {id} = req.params
-      const result = await petCollection.findOne({_id:id})
+    app.get('/pet/:id', async(req, res)=> {
+      const {id} = req.params;
+      const result = await petCollection.findOne({_id : new ObjectId(id)})
       res.json(result);
-    });
+    })
 
-    // await client.db("admin").command({ ping: 1 });
-    console.log("Ping successful");
-  } catch (err) {
-    console.error("Mongo error:", err);
+    app.post('/pet', async(req, res)=>{
+      const petData = req.body
+      console.log(petData);
+      const result = await petCollection.insertOne(petData);
+      res.json(result);
+    })
+
+    await client.db("admin").command({ ping: 1 });
+    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+  } finally {
+    // await client.close();
   }
 }
 run().catch(console.dir);
+
+
 
 app.get('/', (req, res) => {
   res.send('Hello World!')
 })
 
-app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`)
+app.listen(PORT, () => {
+  console.log(`Example app listening on port ${PORT}`)
 })
