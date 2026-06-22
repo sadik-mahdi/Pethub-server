@@ -2,6 +2,7 @@ const express = require('express');
 const dotenv = require('dotenv');
 const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const { createRemoteJWKSet, jwtVerify } = require('jose-cjs');
 dotenv.config();
 
 const uri =  process.env.MONGODB_URI;
@@ -18,6 +19,7 @@ app.use(
 
 app.use(express.json())
 
+
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -25,6 +27,28 @@ const client = new MongoClient(uri, {
     deprecationErrors: true,
   }
 });
+
+const JWKS = createRemoteJWKSet(
+    new URL('http://localhost:3000/api/auth/jwks')
+  )
+
+const verifyToken = async(req, res, next) => {
+  const authHeader = req?.headers.authorization;
+  if(!authHeader){
+    return res.status(401).json({message : "Unauthorized"})
+  }
+  const token = authHeader.split(" ")[1]
+  if(!token){
+    return res.status(401).json({message : "Unauthorized"})
+  }
+  try{
+    const {payload} = await jwtVerify(token, JWKS)
+    console.log(payload)
+    next()
+  }catch(error){
+    return res.status(401).json({message : "Forbidden"})
+  }
+};
 
 async function run() {
   try {
@@ -52,36 +76,30 @@ async function run() {
     res.json(result);
   });
 
-  app.get("/pet/:id", requireAuth, async (req, res) => {
-    const { id } = req.params;
-    let query;
-    if (ObjectId.isValid(id)) {
-      query = { _id: new ObjectId(id) };
-    } else {
-      return res.status(400).json({ message: "Invalid ID format" });
+  app.get("/pet/:id", verifyToken, async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const pet = await petCollection.findOne({ _id: id });
+
+      if (!pet) {
+        return res.status(404).json({ message: "Pet not found" });
+      }
+
+      res.json(pet);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "Server error" });
     }
-    const pet = await petCollection.findOne(query);
-    if (!pet) {
-      return res.status(404).json({ message: "Pet not found" });
-    }
-    res.json(pet);
   });
 
-  app.post("/pet", async (req, res) => {
-    const petData = req.body;
-
-    const result = await petCollection.insertOne(petData);
-
-    res.json(result);
-  });
-
-  app.get("/request/:userId", async (req, res) => {
+  app.get("/request/:userId", verifyToken, async (req, res) => {
     const { userId } = req.params;
     const result = await requestsCollection.find({ userId }).toArray();
     res.json(result);
   });
 
-  app.post('/request', async(req, res) => {
+  app.post('/request', verifyToken, async(req, res) => {
     const requestData = req.body
     const result = await requestsCollection.insertOne(requestData);
     res.json(result);
